@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, BookOpen, Github, Youtube, FileText, Star, ExternalLink, Bookmark, Filter, TrendingUp, Zap, Clock, Users } from 'lucide-react';
-
+// console.log(import.meta.env.VITE_APP_API_URL,"env")
+let api_url = import.meta.env.VITE_APP_API_URL;
 export default function ResourceFinder() {
   const [searchQuery, setSearchQuery] = useState('');
   const [resources, setResources] = useState([]);
@@ -64,7 +65,7 @@ export default function ResourceFinder() {
   saveSearchHistory(searchQuery);
 
   try {
-    const response = await fetch("http://localhost:3000/api/search", {
+    const response = await fetch(`${api_url}/api/search`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
