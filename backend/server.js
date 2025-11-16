@@ -13,30 +13,6 @@ const port = process.env.PORT|| 5000;
 app.get("/",(res,rej)=>{
   return  rej.send("hii it working");
 })
-
-
-
-// const express = require('express');
-// const cors = require('cors');
-// const mongoose = require('mongoose');
-// const axios = require('axios');
-// require('dotenv').config();
-
-// const app = express();
-// const PORT = process.env.PORT || 5000;
-
-// Middleware
-// app.use(cors());
-// app.use(express.json());
-
-// MongoDB Connection
-// mongoose.connect(process.env.MONGODB_URI, {
-//   useNewUrlParser: true,
-//   useUnifiedTopology: true,
-// })
-// .then(() => console.log('MongoDB connected'))
-// .catch(err => console.error('MongoDB connection error:', err));
-
 // Mongoose Schemas
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
@@ -326,35 +302,60 @@ async function searchGitHub(query) {
 }
 
 // Dev.to API Integration
+// async function searchDevTo(query) {
+//   try {
+//     const response = await axios.get('https://dev.to/api/articles', {
+//       params: {
+//         per_page: 10,
+//       }
+//     });
+
+//     return response.data
+//       .filter(a => 
+//         a.title.toLowerCase().includes(query.toLowerCase()) ||
+//         a.description.toLowerCase().includes(query.toLowerCase())
+//       )
+//       .slice(0, 5)
+//       .map(article => ({
+//         title: article.title,
+//         type: 'article',
+//         source: 'Dev.to',
+//         author: article.user.name,
+//         description: article.description,
+//         url: article.url,
+//         tags: article.tag_list,
+//         readTime: article.reading_time_minutes
+//       }));
+//   } catch (error) {
+//     console.error('Dev.to API Error:', error.message);
+//     return [];
+//   }
+// }
 async function searchDevTo(query) {
   try {
     const response = await axios.get('https://dev.to/api/articles', {
       params: {
         per_page: 10,
+        search: query   // <-- important
       }
     });
 
-    return response.data
-      .filter(a => 
-        a.title.toLowerCase().includes(query.toLowerCase()) ||
-        a.description.toLowerCase().includes(query.toLowerCase())
-      )
-      .slice(0, 5)
-      .map(article => ({
-        title: article.title,
-        type: 'article',
-        source: 'Dev.to',
-        author: article.user.name,
-        description: article.description,
-        url: article.url,
-        tags: article.tag_list,
-        readTime: article.reading_time_minutes
-      }));
+    return response.data.slice(0, 5).map(article => ({
+      title: article.title,
+      type: 'article',
+      source: 'Dev.to',
+      author: article.user?.name,
+      description: article.description,
+      url: article.url,
+      tags: article.tag_list,
+      readTime: article.reading_time_minutes
+    }));
   } catch (error) {
-    console.error('Dev.to API Error:', error.message);
+    console.error("Dev.to API Error:", error.message);
     return [];
   }
 }
+
 // Main Search Endpoint
 // app.post('/api/search', async (req, res) => {
 //   console.log("hii it reached");

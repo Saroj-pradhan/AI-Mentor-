@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, BookOpen, Github, Youtube, FileText, Star, ExternalLink, Bookmark, Filter, TrendingUp, Zap, Clock, Users } from 'lucide-react';
 // console.log(import.meta.env.VITE_APP_API_URL,"env")
+import {SignOutButton , UserButton } from "@clerk/clerk-react"
 let api_url = import.meta.env.VITE_APP_API_URL;
 export default function ResourceFinder() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -176,7 +177,7 @@ export default function ResourceFinder() {
             
             {/* Navigation */}
             <div className="flex gap-2">
-              <button
+              {/* <button
                 onClick={() => setActiveTab('search')}
                 className={`px-4 py-2 rounded-lg font-medium transition-all ${
                   activeTab === 'search' 
@@ -186,7 +187,8 @@ export default function ResourceFinder() {
               >
                 <Search className="w-4 h-4 inline mr-1" />
                 Search
-              </button>
+              </button> */}
+
               <button
                 onClick={() => setActiveTab('bookmarks')}
                 className={`px-4 py-2 rounded-lg font-medium transition-all ${
@@ -198,6 +200,8 @@ export default function ResourceFinder() {
                 <Bookmark className="w-4 h-4 inline mr-1" />
                 Saved ({bookmarks.length})
               </button>
+              {/* <button><SignOutButton></SignOutButton></button> */}
+              <button> <UserButton /></button>
             </div>
           </div>
         </div>

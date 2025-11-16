@@ -31,28 +31,6 @@ const userSchema = new mongoose.Schema({
     default: ''
   },
   
-  // User preferences
-  preferences: {
-    theme: {
-      type: String,
-      enum: ['light', 'dark', 'auto'],
-      default: 'light'
-    },
-    defaultDifficulty: {
-      type: String,
-      enum: ['beginner', 'intermediate', 'advanced', 'all'],
-      default: 'all'
-    },
-    preferredResourceTypes: [{
-      type: String,
-      enum: ['youtube', 'github', 'article', 'course']
-    }],
-    emailNotifications: {
-      type: Boolean,
-      default: true
-    }
-  },
-  
   // Bookmarks and saved resources
   bookmarks: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -83,82 +61,6 @@ const userSchema = new mongoose.Schema({
     }
   }],
   
-  // Learning paths in progress
-  learningPaths: [{
-    topic: String,
-    difficulty: String,
-    steps: [{
-      title: String,
-      description: String,
-      resources: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Resource'
-      }],
-      completed: {
-        type: Boolean,
-        default: false
-      }
-    }],
-    progress: {
-      type: Number,
-      default: 0
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  
-  // User activity stats
-  stats: {
-    totalSearches: {
-      type: Number,
-      default: 0
-    },
-    totalBookmarks: {
-      type: Number,
-      default: 0
-    },
-    completedResources: {
-      type: Number,
-      default: 0
-    },
-    favoriteTopics: [String]
-  },
-  
-  // Social features
-  following: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  followers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  
-  // Account metadata
-  isVerified: {
-    type: Boolean,
-    default: false
-  },
-  isPremium: {
-    type: Boolean,
-    default: false
-  },
-  premiumExpiry: Date,
-  
-  lastLogin: {
-    type: Date,
-    default: Date.now
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
 }, {
   timestamps: true
 });
@@ -166,7 +68,6 @@ const userSchema = new mongoose.Schema({
 // Indexes for better query performance
 userSchema.index({ email: 1 });
 userSchema.index({ createdAt: -1 });
-userSchema.index({ 'stats.favoriteTopics': 1 });
 
 // Virtual for bookmark count
 userSchema.virtual('bookmarkCount').get(function() {
