@@ -178,13 +178,13 @@ Respond ONLY with valid JSON in this format:
       },
       { headers: { "Content-Type": "application/json" } }
     );
-
+ 
     const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       console.warn("⚠️ Gemini returned empty response");
       return null;
     }
-
+console.log(text,"res frm gmni")
     const cleanText = text
       .replace(/```json/g, "")
       .replace(/```/g, "")
@@ -491,7 +491,7 @@ app.post('/api/search', async (req, res) => {
       // ✅ Sort by rating descending and limit to 10
       const topResources = rankedResources
         .sort((a, b) => b.rating - a.rating)
-        .slice(0, 10);
+        .slice(0, 20);
 
       // ✅ Cache results
       await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
@@ -514,7 +514,7 @@ app.post('/api/search', async (req, res) => {
 
     const fallbackResources = [...youtubeResults, ...githubResults, ...devtoResults];
     const rankedResources = await rankResourcesWithAI(fallbackResources, query, null);
-    const topResources = rankedResources.sort((a, b) => b.rating - a.rating).slice(0, 10);
+    const topResources = rankedResources.sort((a, b) => b.rating - a.rating).slice(0, 20);
 
     // Cache fallback
     await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
