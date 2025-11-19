@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, BookOpen, Github, Youtube, FileText, Star, ExternalLink, Bookmark, Filter, TrendingUp, Zap, Clock, Users } from 'lucide-react';
 // console.log(import.meta.env.VITE_APP_API_URL,"env")
-import {SignOutButton , UserButton } from "@clerk/clerk-react"
+import {SignOutButton , UserButton , useUser, useAuth } from "@clerk/clerk-react"
+
 let api_url = import.meta.env.VITE_APP_API_URL;
 export default function ResourceFinder() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -12,7 +13,11 @@ export default function ResourceFinder() {
   const [bookmarks, setBookmarks] = useState([]);
   const [activeTab, setActiveTab] = useState('search');
   const [recentSearches, setRecentSearches] = useState([]);
-
+  // userINfo
+  const userinfo = useUser();
+  console.log(userinfo,"userinfo")
+  console.log(userinfo.user.primaryEmailAddress.emailAddress,"mail")
+  console.log(userinfo.user.fullName)
   // Load bookmarks from storage
   useEffect(() => {
     loadBookmarks();
@@ -71,17 +76,23 @@ export default function ResourceFinder() {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ query: searchQuery })
+      body: JSON.stringify({ query: searchQuery,
+        mail:userinfo.user.primaryEmailAddress.emailAddress,
+        userID:userinfo.user.id,
+        fullname:userinfo.user.fullName
+      })
     });
 
     const data = await response.json();
-
+   console.log(data,"data")
     if (response.ok) {
       // Normalize data for UI
       const formatted = data.resources.map((item, i) => ({
         id: item._id || `res-${i}`,
         title: item.title || "Untitled Resource",
-        type: item.type || "article",
+        // type: item.type || "article",
+        type: item.type === "pdf" ? "pdf" : item.type || "article",
+realType: item.type,     // keep original type
         source: item.source || "Unknown",
         author: item.author || "Unknown Author",
         description: item.description || "No description available.",
@@ -127,15 +138,26 @@ export default function ResourceFinder() {
 
   const isBookmarked = (id) => bookmarks.some(b => b.id === id);
 
+  // const getIcon = (type) => {
+  //   switch(type) {
+  //     case 'youtube': return <Youtube className="w-5 h-5 text-red-500" />;
+  //     case 'github': return <Github className="w-5 h-5 text-gray-700" />;
+  //     case 'article': return <FileText className="w-5 h-5 text-blue-500" />;
+  //     case 'course': return <BookOpen className="w-5 h-5 text-green-500" />;
+  //     default: return <FileText className="w-5 h-5" />;
+  //   }
+  // };
   const getIcon = (type) => {
-    switch(type) {
-      case 'youtube': return <Youtube className="w-5 h-5 text-red-500" />;
-      case 'github': return <Github className="w-5 h-5 text-gray-700" />;
-      case 'article': return <FileText className="w-5 h-5 text-blue-500" />;
-      case 'course': return <BookOpen className="w-5 h-5 text-green-500" />;
-      default: return <FileText className="w-5 h-5" />;
-    }
-  };
+  switch(type) {
+    case 'youtube': return <Youtube className="w-5 h-5 text-red-500" />;
+    case 'github': return <Github className="w-5 h-5 text-gray-700" />;
+    case 'article': return <FileText className="w-5 h-5 text-blue-500" />;
+    // case 'course': return <BookOpen className="w-5 h-5 text-green-500" />;
+    case 'pdf': return <FileText className="w-5 h-5 text-purple-600" />; // NEW
+    default: return <FileText className="w-5 h-5" />;
+  }
+};
+
 
   const getDifficultyColor = (diff) => {
     switch(diff) {
@@ -147,7 +169,7 @@ export default function ResourceFinder() {
   };
 
   const filteredResources = resources.filter(resource => {
-    const typeMatch = selectedTypes.includes('all') || selectedTypes.includes(resource.type);
+    const typeMatch = selectedTypes.includes('all') ||  selectedTypes.includes(resource.realType) || selectedTypes.includes(resource.type);
     const difficultyMatch = difficulty === 'all' || resource.difficulty === difficulty || resource.difficulty === 'all';
     return typeMatch && difficultyMatch;
   });
@@ -291,7 +313,7 @@ export default function ResourceFinder() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Resource Type</label>
                     <div className="flex flex-wrap gap-2">
-                      {['all', 'youtube', 'github', 'article', 'course'].map(type => (
+                      {['all', 'youtube', 'github', 'article','pdf'].map(type => (
                         <button
                           key={type}
                           onClick={() => setSelectedTypes([type])}
@@ -355,7 +377,11 @@ export default function ResourceFinder() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2 flex-wrap">
-                            {getIcon(resource.type)}
+                            {/* {getIcon(resource.type)} */}
+                            {resource.realType === "pdf" 
+  ? <FileText className="w-5 h-5 text-purple-600" />
+  : getIcon(resource.type)
+}
                             <span className="text-sm font-medium text-gray-600">{resource.source}</span>
                             <span className={`px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(resource.difficulty)}`}>
                               {resource.difficulty}
@@ -459,7 +485,12 @@ export default function ResourceFinder() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          {getIcon(resource.type)}
+                          {/* {getIcon(resource.type)} */}
+                          {resource.realType === "pdf" 
+  ? <FileText className="w-5 h-5 text-purple-600" />
+  : getIcon(resource.type)
+}
+
                           <span className="text-sm font-medium text-gray-600">{resource.source}</span>
                           <span className={`px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(resource.difficulty)}`}>
                             {resource.difficulty}

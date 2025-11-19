@@ -6,6 +6,8 @@ const connectDB = require("./config/db");
 const app = express();
 const axios = require('axios');
 const mongoose = require('mongoose');
+const User = require("./models/User");
+const xml2js = require("xml2js");
 app.use(express.json());
 app.use(cors());
 connectDB();
@@ -14,13 +16,7 @@ app.get("/",(res,rej)=>{
   return  rej.send("hii it working");
 })
 // Mongoose Schemas
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Resource' }],
-  searchHistory: [{ query: String, timestamp: Date }],
-  createdAt: { type: Date, default: Date.now }
-});
+
 
 const resourceSchema = new mongoose.Schema({
   title: String,
@@ -40,7 +36,7 @@ resourceSchema.index({
   description: 'text',
   tags: 'text'
 });
-const User = mongoose.model('User', userSchema);
+// const User = mongoose.model('User', userSchema);
 const Resource = mongoose.model('Resource', resourceSchema);
 
 // AI Integration - Claude/OpenAI/Gemini
@@ -152,7 +148,7 @@ async function analyzeQueryWithAI(query) {
 
   try {
     // ✅ Use correct endpoint for 2.5 models
-    const GEMINI_MODEL = "gemini-2.5-flash"; // or gemini-2.5-pro / flash-lite
+    const GEMINI_MODEL ="gemini-2.0-flash-lite" ;//"gemini-2.5-flash"; // or gemini-2.5-pro / flash-lite
     const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
     const response = await axios.post(
@@ -233,40 +229,122 @@ console.log(text,"res frm gmni")
 // }
 async function searchYouTube(query) {
   const apiKey = process.env.YOUTUBE_API_KEY;
-console.log("hiiiiiiiiiiiiiyoutube")
+
   try {
-    const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-      params: {
-        part: 'snippet',
-        q: `${query} tutorial`,
-        type: 'video', // ensures only video results (not playlists/channels)
-        maxResults: 10,
-        key: apiKey
+    // 1. Search videos
+    const searchResponse = await axios.get(
+      "https://www.googleapis.com/youtube/v3/search",
+      {
+        params: {
+          part: "snippet",
+          q: `${query} tutorial`,
+          type: "video",
+          maxResults: 15,
+          key: apiKey
+        }
       }
+    );
+
+    const videoItems = searchResponse.data.items;
+
+    // Extract video IDs
+    const videoIds = videoItems.map(v => v.id.videoId).join(",");
+
+    // 2. Get VIDEO DURATIONS
+    const videoInfo = await axios.get(
+      "https://www.googleapis.com/youtube/v3/videos",
+      {
+        params: {
+          part: "contentDetails",
+          id: videoIds,
+          key: apiKey
+        }
+      }
+    );
+
+    // Create a map of id → duration
+    const durationMap = {};
+    videoInfo.data.items.forEach(video => {
+      durationMap[video.id] = video.contentDetails.duration;
     });
 
-    // Debug log to confirm structure
-    console.log("YouTube API first item:", response.data.items[0]?.id);
+    // 3. Filter out Shorts (< 60 sec)
+    const isShortVideo = duration => {
+      if (!duration) return false;
+      const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
 
-    return response.data.items.map(item => {
-      const videoId = item.id?.videoId;
-      return {
-        title: item.snippet.title,
-        type: 'youtube',
-        source: 'YouTube',
-        author: item.snippet.channelTitle,
-        description: item.snippet.description,
-        // ✅ FIXED: use item.id.videoId safely
-        url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
-        thumbnail: item.snippet?.thumbnails?.medium?.url,
-        publishedAt: item.snippet?.publishedAt
-      };
-    }).filter(video => video.url !== null); // remove undefined videos
+      const hours = parseInt(match[1]) || 0;
+      const minutes = parseInt(match[2]) || 0;
+      const seconds = parseInt(match[3]) || 0;
+
+      const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+
+      return totalSeconds <= 60; // remove shorts
+    };
+
+    // 4. Build final result
+    const finalVideos = videoItems
+      .filter(item => {
+        const duration = durationMap[item.id.videoId];
+        return !isShortVideo(duration); // remove shorts
+      })
+      .map(item => {
+        const videoId = item.id.videoId;
+        return {
+          title: item.snippet.title,
+          type: "youtube",
+          source: "YouTube",
+          author: item.snippet.channelTitle,
+          description: item.snippet.description,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          thumbnail: item.snippet.thumbnails.medium.url,
+          publishedAt: item.snippet.publishedAt
+        };
+      });
+
+    return finalVideos;
   } catch (error) {
-    console.error('YouTube API Error:', error.response?.data || error.message);
+    console.error("YouTube API Error:", error.response?.data || error.message);
     return [];
   }
 }
+
+// async function searchYouTube(query) {
+//   const apiKey = process.env.YOUTUBE_API_KEY;
+// console.log("hiiiiiiiiiiiiiyoutube")
+//   try {
+//     const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+//       params: {
+//         part: 'snippet',
+//         q: `${query} tutorial`,
+//         type: 'video', // ensures only video results (not playlists/channels)
+//         maxResults: 10,
+//         key: apiKey
+//       }
+//     });
+
+//     // Debug log to confirm structure
+//     console.log("YouTube API first item:", response.data.items[0]?.id);
+
+//     return response.data.items.map(item => {
+//       const videoId = item.id?.videoId;
+//       return {
+//         title: item.snippet.title,
+//         type: 'youtube',
+//         source: 'YouTube',
+//         author: item.snippet.channelTitle,
+//         description: item.snippet.description,
+//         // ✅ FIXED: use item.id.videoId safely
+//         url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
+//         thumbnail: item.snippet?.thumbnails?.medium?.url,
+//         publishedAt: item.snippet?.publishedAt
+//       };
+//     }).filter(video => video.url !== null); // remove undefined videos
+//   } catch (error) {
+//     console.error('YouTube API Error:', error.response?.data || error.message);
+//     return [];
+//   }
+// }
 
 // GitHub API Integration
 async function searchGitHub(query) {
@@ -355,93 +433,188 @@ async function searchDevTo(query) {
     return [];
   }
 }
+// search any pdf document availeble
 
-// Main Search Endpoint
+
+async function fetchPdfNotes(query) {
+  try {
+    const url = `http://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(
+      query
+    )}&start=0&max_results=5`;
+
+    const response = await axios.get(url);
+
+    // XML → JSON
+    const parser = new xml2js.Parser({ explicitArray: false });
+    const parsed = await parser.parseStringPromise(response.data);
+
+    const entries = parsed.feed.entry || [];
+    const pdfList = Array.isArray(entries) ? entries : [entries];
+
+    return pdfList.map(item => ({
+      title: item.title?.trim(),
+      type: "pdf",
+      source: "ArXiv",
+      description: item.summary?.trim(),
+      url: item.id?.replace("abs", "pdf"),
+      publishedAt: item.published,
+    }));
+  } catch (err) {
+    console.error("📄 PDF Fetch Error:", err.message);
+    return [];
+  }
+}
+// search
 // app.post('/api/search', async (req, res) => {
-//   console.log("hii it reached");
+//   console.log("🚀 /api/search hit");
+
 //   try {
-//     const { query, filters } = req.body;
-//     console.log(query,"query");
-//     // Check cache first
+//     const { query , fullname , userID,mail} = req.body;
+//     console.log("Query received:", query , fullname , userID,mail);
+
+//     // ✅ Step 1: Check cache (recent results < 24h)
 //     const cachedResources = await Resource.find({
 //       $text: { $search: query },
-//       cachedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // 24 hours
+//       cachedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
 //     }).limit(20);
-//     console.log("query2");
+//      // check cached resources
+     
 //     // if (cachedResources.length > 0) {
+//     //   console.log("✅ Using cached results");
 //     //   return res.json({ resources: cachedResources, cached: true });
 //     // }
-//     console.log("query3");
-//     // Get AI analysis
+//     // storing userINfo
+//     let user = await User.findOne({ email: mail });
+
+// if (!user) {
+//   user = await User.create({
+//     name: fullname,
+//     email: mail,
+//   });
+// }
+
+
+//     console.log("⚙️ Calling AI analysis...");
 //     const aiAnalysis = await analyzeQueryWithAI(query);
-//     console.log(aiAnalysis,"after it y g d")
-//     // Parallel API calls
+
+//     // ✅ Step 2: If AI works — try to directly extract resource suggestions
+//     if (aiAnalysis) {
+//       console.log("✅ AI analysis succeeded:", aiAnalysis);
+
+//       // Optional: if Gemini also gives direct links (future extension)
+//       const aiGeneratedResources = [];
+
+//       if (aiAnalysis.resources) {
+//         aiAnalysis.resources.forEach(r => {
+//           aiGeneratedResources.push({
+//             title: r.title || "AI Suggested Resource",
+//             type: r.type || "article",
+//             source: r.source || "AI Recommendation",
+//             author: r.author || "AI Curated",
+//             description: r.description || "Suggested by AI",
+//             url: r.link || r.url || null,
+//             difficulty: aiAnalysis.suggestedDifficulty || "intermediate",
+//             rating: Math.random() * 1.5 + 3.5, // pseudo rating
+//             tags: [query],
+//           });
+//         });
+//       }
+
+//       // ✅ Step 3: If AI didn't include direct resources, use refined keywords
+//       const refinedQueries = aiAnalysis.searchKeywords?.length
+//         ? aiAnalysis.searchKeywords.slice(0, 3)
+//         : [query];
+
+//       // Parallel API calls using the refined keywords (smarter)
+//       const [youtubeResults, githubResults, devtoResults] = await Promise.all([
+//         searchYouTube(refinedQueries[0]),
+//         searchGitHub(refinedQueries[1] || query),
+//         searchDevTo(refinedQueries[2] || query),
+//       ]);
+
+//       console.log("🌐 API results fetched", {
+//         youtube: youtubeResults.length,
+//         github: githubResults.length,
+//         devto: devtoResults.length,
+//       });
+
+//       let allResources = [
+//         ...(aiGeneratedResources || []),
+//         ...youtubeResults,
+//         ...githubResults,
+//         ...devtoResults,
+//       ];
+
+//       // ✅ Use AI to rank and filter
+//       const rankedResources = await rankResourcesWithAI(allResources, query, aiAnalysis);
+
+//       // ✅ Sort by rating descending and limit to 10
+//       const topResources = rankedResources
+//         .sort((a, b) => b.rating - a.rating)
+//         .slice(0, 20);
+
+//       // ✅ Cache results
+//       await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
+// console.log(topResources,"topppppp")
+//       return res.json({
+//         resources: topResources,
+//         aiAnalysis,
+//         cached: false,
+//         source: "ai+api",
+//       });
+//     }
+
+
+
+//     // 🧩 Step 4: AI failed → fallback to regular APIs
+//     console.log("⚠️ AI failed — using fallback search");
 //     const [youtubeResults, githubResults, devtoResults] = await Promise.all([
 //       searchYouTube(query),
 //       searchGitHub(query),
-//       searchDevTo(query)
+//       searchDevTo(query),
 //     ]);
-//     console.log("nooooooo")
-//     console.log({
-//   youtube: youtubeResults?.length,
-//   github: githubResults?.length,
-//   devto: devtoResults?.length
-// },"jjjjjjjay jagannath");
 
-//     // Combine and rank results
-// let allResources = [...youtubeResults, ...githubResults, ...devtoResults];
+//     const fallbackResources = [...youtubeResults, ...githubResults, ...devtoResults];
+//     const rankedResources = await rankResourcesWithAI(fallbackResources, query, null);
+//     const topResources = rankedResources.sort((a, b) => b.rating - a.rating).slice(0, 20);
 
-// // Use AI to rank and filter
-// const rankedResources = await rankResourcesWithAI(allResources, query, aiAnalysis);
+//     // Cache fallback
+//     await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
 
-// // ✅ Sort by rating descending and limit to top 10
-// const topResources = rankedResources
-//   .sort((a, b) => b.rating - a.rating)
-//   .slice(0, 10);
+//     res.json({
+//       resources: topResources,
+//       aiAnalysis: null,
+//       cached: false,
+//       source: "fallback",
+//     });
 
-// // Cache results
-// const savedResources = await Resource.insertMany(
-//   topResources.map(r => ({ ...r, tags: [query] }))
-// );
-
-// res.json({ 
-//   resources: topResources,
-//   aiAnalysis,
-//   cached: false 
-// });
-
-    
 //   } catch (error) {
-//     console.error('Search Error:', error);
-//     res.status(500).json({ error: 'Search failed' });
+//     console.error("❌ Search Error:", error.message);
+//     res.status(500).json({ error: "Search failed", details: error.message });
 //   }
 // });
 app.post('/api/search', async (req, res) => {
   console.log("🚀 /api/search hit");
 
   try {
-    const { query } = req.body;
-    console.log("Query received:", query);
+    const { query, fullname, userID, mail } = req.body;
+    console.log("Query received:", query, fullname, userID, mail);
 
-    // ✅ Step 1: Check cache (recent results < 24h)
-    const cachedResources = await Resource.find({
-      $text: { $search: query },
-      cachedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    }).limit(20);
+    let user = await User.findOne({ email: mail });
 
-    // if (cachedResources.length > 0) {
-    //   console.log("✅ Using cached results");
-    //   return res.json({ resources: cachedResources, cached: true });
-    // }
+    if (!user) {
+      user = await User.create({
+        name: fullname,
+        email: mail,
+      });
+    }
 
     console.log("⚙️ Calling AI analysis...");
     const aiAnalysis = await analyzeQueryWithAI(query);
 
-    // ✅ Step 2: If AI works — try to directly extract resource suggestions
     if (aiAnalysis) {
       console.log("✅ AI analysis succeeded:", aiAnalysis);
 
-      // Optional: if Gemini also gives direct links (future extension)
       const aiGeneratedResources = [];
 
       if (aiAnalysis.resources) {
@@ -454,28 +627,34 @@ app.post('/api/search', async (req, res) => {
             description: r.description || "Suggested by AI",
             url: r.link || r.url || null,
             difficulty: aiAnalysis.suggestedDifficulty || "intermediate",
-            rating: Math.random() * 1.5 + 3.5, // pseudo rating
+            rating: Math.random() * 1.5 + 3.5,
             tags: [query],
           });
         });
       }
 
-      // ✅ Step 3: If AI didn't include direct resources, use refined keywords
       const refinedQueries = aiAnalysis.searchKeywords?.length
         ? aiAnalysis.searchKeywords.slice(0, 3)
         : [query];
 
-      // Parallel API calls using the refined keywords (smarter)
-      const [youtubeResults, githubResults, devtoResults] = await Promise.all([
+      // 🔥 FETCH PDF NOTES HERE
+      const [
+        youtubeResults,
+        githubResults,
+        devtoResults,
+        pdfResults
+      ] = await Promise.all([
         searchYouTube(refinedQueries[0]),
         searchGitHub(refinedQueries[1] || query),
         searchDevTo(refinedQueries[2] || query),
+        fetchPdfNotes(query), // 💥 added PDF notes
       ]);
 
       console.log("🌐 API results fetched", {
         youtube: youtubeResults.length,
         github: githubResults.length,
         devto: devtoResults.length,
+        pdfs: pdfResults.length,
       });
 
       let allResources = [
@@ -483,18 +662,18 @@ app.post('/api/search', async (req, res) => {
         ...youtubeResults,
         ...githubResults,
         ...devtoResults,
+        ...pdfResults, // 💥 add pdf notes
       ];
 
-      // ✅ Use AI to rank and filter
       const rankedResources = await rankResourcesWithAI(allResources, query, aiAnalysis);
 
-      // ✅ Sort by rating descending and limit to 10
       const topResources = rankedResources
         .sort((a, b) => b.rating - a.rating)
         .slice(0, 20);
 
-      // ✅ Cache results
       await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
+
+      console.log(topResources, "topppppp");
 
       return res.json({
         resources: topResources,
@@ -504,22 +683,34 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    // 🧩 Step 4: AI failed → fallback to regular APIs
-    console.log("⚠️ AI failed — using fallback search");
-    const [youtubeResults, githubResults, devtoResults] = await Promise.all([
+    // Fallback
+    console.log("⚠️ AI failed — fallback");
+
+    const [
+      youtubeResults,
+      githubResults,
+      devtoResults,
+      pdfResults
+    ] = await Promise.all([
       searchYouTube(query),
       searchGitHub(query),
       searchDevTo(query),
+      fetchPdfNotes(query), // 💥 added pdf here too
     ]);
 
-    const fallbackResources = [...youtubeResults, ...githubResults, ...devtoResults];
-    const rankedResources = await rankResourcesWithAI(fallbackResources, query, null);
-    const topResources = rankedResources.sort((a, b) => b.rating - a.rating).slice(0, 20);
+    const fallbackResources = [
+      ...youtubeResults,
+      ...githubResults,
+      ...devtoResults,
+      ...pdfResults
+    ];
 
-    // Cache fallback
+    const rankedResources = await rankResourcesWithAI(fallbackResources, query, null);
+    const topResources = rankedResources.slice(0, 20);
+
     await Resource.insertMany(topResources.map(r => ({ ...r, tags: [query] })));
 
-    res.json({
+    return res.json({
       resources: topResources,
       aiAnalysis: null,
       cached: false,
@@ -547,28 +738,45 @@ async function rankResourcesWithAI(resources, query, analysis) {
 // User Bookmark Endpoints
 app.post('/api/bookmarks', async (req, res) => {
   try {
-    const { userId, resourceId } = req.body;
-    
-    const user = await User.findById(userId);
+    const { email, resourceId } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Prevent duplicates
     if (!user.bookmarks.includes(resourceId)) {
       user.bookmarks.push(resourceId);
       await user.save();
     }
-    
+
     res.json({ success: true });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to add bookmark' });
   }
 });
 
-app.get('/api/bookmarks/:userId', async (req, res) => {
+
+app.get('/api/bookmarks/:email', async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate('bookmarks');
+    const email = req.params.email;
+
+    const user = await User.findOne({ email }).populate("bookmarks");
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
     res.json({ bookmarks: user.bookmarks });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to fetch bookmarks' });
   }
 });
+
 
 // Learning Path Generator
 app.post('/api/learning-path', async (req, res) => {
